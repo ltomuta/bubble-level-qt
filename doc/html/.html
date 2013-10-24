@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<!-- qtbubblelevel.qdoc -->
+  <title>Qt Bubble Level Example</title>
+  <link rel="stylesheet" type="text/css" href="style/style.css" />
+  <script src="scripts/jquery.js" type="text/javascript"></script>
+  <script src="scripts/functions.js" type="text/javascript"></script>
+</head>
+<body class="offline narrow creator">
+              <li><a href="all-examples.html">Examples</a></li>              <li>Qt Bubble Level Example</li><div class="toc">
+<h3><a name="toc">Contents</a></h3>
+<ul>
+<li class="level1"><a href="#initialising-the-application">Initialising the application</a></li>
+<li class="level1"><a href="#accessing-the-accelerometer-information">Accessing the accelerometer information</a></li>
+<li class="level1"><a href="#the-qt-quick-ui">The Qt Quick UI</a></li>
+</ul>
+</div>
+<h1 class="title">Qt Bubble Level Example</h1>
+<span class="subtitle"></span>
+<!-- $$$-description -->
+<div class="descr"> <a name="details"></a>
+<p>Qt Bubble Level is a simple application that uses accelerometer sensor information to calculate the inclination of the device and presents this as a traditional Bubble level. The application provides a calibration feature to handle any possible errors in accelerometer readings.</p>
+<p class="centerAlign"><img src="images/qml-qtbubblelevel-example.png" /></p><a name="initialising-the-application"></a>
+<h2>Initialising the application</h2>
+<p>All of the initialisations are done in the main function.</p>
+<p>First the QDeclarativeView is created to intepret the QML files. The QML file given is found from Qt resource. The root QML element is set to resize to the view whenever the view is resized.</p>
+<pre class="highlightedCode brush: cpp">        QDeclarativeView view;
+        view.setSource(QUrl(&quot;qrc:/qml/BubbleLevel.qml&quot;));
+        view.setResizeMode(QDeclarativeView::SizeRootObjectToView);</pre>
+<p>The Settings object will handle the loading / storing of the calibration value. Then we create a instances from QAccelerometer and AccelerometerFilter and attach the filter into the sensor.</p>
+<pre class="highlightedCode brush: cpp">        Settings settings;
+
+        QAccelerometer sensor;
+        AccelerometerFilter filter;
+        sensor.addFilter(&amp;filter);</pre>
+<p>The Qt code is then connected to QML code by using Qt Signals and Slots connections. First the rootobject is retrieved QDeclarativeEngine which is retrieved from QDeclarativeView. The root object represents now the Qt object of the QML's root element.</p>
+<p>The saveCorrectionAngle signal of the QML root element is connected to Qt slot saveCorrectionAngle. The rotationChanged and correctionAngle Qt signals are connected to handleRotation and setCorrectionAngle slot of QML root element. Finally the quit signal of the QDeclarativeEngine is connected to QApplication's quit slot.</p>
+<pre class="highlightedCode brush: cpp">        QObject *rootObject = dynamic_cast&lt;QObject*&gt;(view.rootObject());
+
+        <span class="comment">// Associate Qt / QML signals and slots</span>
+        QObject::connect(rootObject, SIGNAL(saveCorrectionAngle(const QVariant&amp;)),
+                         &amp;settings, SLOT(saveCorrectionAngle(const QVariant&amp;)));
+
+        QObject::connect(&amp;filter, SIGNAL(rotationChanged(const QVariant&amp;)),
+                         rootObject, SLOT(handleRotation(const QVariant&amp;)));
+
+        QObject::connect(&amp;settings, SIGNAL(correctionAngle(const QVariant&amp;)),
+                         rootObject, SLOT(setCorrectionAngle(const QVariant&amp;)));
+
+        QObject::connect((QObject*)view.engine(), SIGNAL(quit()),
+                         &amp;app, SLOT(quit()));</pre>
+<p>On the Maemo target the application needs an minimize button so we connect one additional QML signal to Qt slot. The minimize button is made visible by setting the QML root element's taskSwitcherVisible property to value true.</p>
+<pre class="highlightedCode brush: cpp">    #ifdef Q_OS_MAEMO_5
+        TaskSwitcher taskSwitcher;
+
+        QObject::connect(rootObject, SIGNAL(minimizeApplication()),
+                         &amp;taskSwitcher, SLOT(minimizeApplication()));
+
+        <span class="comment">// Show the task switcher button</span>
+        rootObject-&gt;setProperty(&quot;taskSwitcherVisible&quot;, true);
+    #endif</pre>
+<p>The correction factor of the accelerometer is retrieved from persistent storage by using QSettings. The correction factor is signalled to QML side by using function setCorrectionAngle. The accelerometer sensor is started and it will eventually begin to signal the changes in accelerometer readings.</p>
+<pre class="highlightedCode brush: cpp">        <span class="comment">// Read correction factor from permanent storage and emit it to QML side</span>
+        settings.loadAndEmitCorrectionAngle();
+
+        <span class="comment">// Begin measuring of accelerometer sensor</span>
+        sensor.start();</pre>
+<p>Finally, in the end of the function the view is shown in full screen in mobile devices. In other targets the application is shown as 800 x 480 resolution on the 100, 100 position from the top-left corner of the desktop.</p>
+<pre class="highlightedCode brush: cpp">    #if defined(Q_WS_MAEMO_5) || defined(Q_OS_SYMBIAN) || defined(Q_WS_SIMULATOR)
+        view.setGeometry(QApplication::desktop()-&gt;screenGeometry());
+        view.showFullScreen();
+    #else
+        view.setGeometry((QRect(100, 100, 800, 480)));
+        view.show();
+    #endif</pre>
+<a name="accessing-the-accelerometer-information"></a>
+<h2>Accessing the accelerometer information</h2>
+<p>The inclination of the device is resolved by using QAccelerometer sensor of the QtMobility. We already created the sensor in the main function and attached our self derived AccelerometerFilter object to it. Here is the definition of the AccelerometerFilter class:</p>
+<pre class="highlightedCode brush: cpp">    #include &lt;QAccelerometerFilter&gt;
+    #include &lt;QVariant&gt;
+
+    QTM_USE_NAMESPACE
+
+    class AccelerometerFilter
+        : public QObject, public QAccelerometerFilter
+    {
+        Q_OBJECT
+
+    protected:
+        qreal x;
+        qreal y;
+        qreal z;
+
+    public:
+        AccelerometerFilter();
+        bool filter(QAccelerometerReading *reading);
+
+    signals:
+        void rotationChanged(const QVariant &amp;deg);
+    };</pre>
+<p>The class is multiderived from QObject and QAccelerometerFilter classes. The QAccelerometerFilter class is derived from QObject because we want to use Qt Signals and Slots to signal changes of the accelerometer readings.</p>
+<p>The members x, y and z stores the previous values of the sensor reading in order to implement low pass filter to the values.</p>
+<p>In the implementation of the AccelerometerFilter class, we first read the value of the each axis from the QAccelerometerReading object. Then the values are converted from radians to degrees and applied the low pass filter to reduce the noise in the sensor readings. Different low pass factors are used depending on the platform (these were found out to be good by experimenting). Finally the calculated value is emitted.</p>
+<p>Note that the accelerometer sensors are oriented differently in Symbian and Maemo devices and we must differentiate this by using platform specific code.</p>
+<pre class="highlightedCode brush: cpp">    bool AccelerometerFilter::filter(QAccelerometerReading *reading)
+    {
+        qreal rx = reading-&gt;x();
+        qreal ry = reading-&gt;y();
+        qreal rz = reading-&gt;z();
+
+        qreal divider = sqrt(rx * rx + ry * ry + rz * rz);
+
+        <span class="comment">// Lowpass factor</span>
+    #ifdef Q_OS_SYMBIAN
+        float lowPassFactor = 0.10;
+    #else
+        float lowPassFactor = 0.05;
+    #endif
+
+        <span class="comment">// Calculate the axis angles in degrees and reduce the noise in sensor</span>
+        <span class="comment">// readings.</span>
+        x += (acos(rx / divider) * RADIANS_TO_DEGREES - 90 - x) * lowPassFactor;
+        y += (acos(ry / divider) * RADIANS_TO_DEGREES - 90 - y) * lowPassFactor;
+        z += (acos(rz / divider) * RADIANS_TO_DEGREES - 90 - z) * lowPassFactor;
+
+        <span class="comment">// The orientations of the accelerometers are different between</span>
+        <span class="comment">// Symbian and Maemo devices so we use the different axes</span>
+        <span class="comment">// depending on the platform.</span>
+    #if defined(Q_OS_SYMBIAN)
+        emit rotationChanged(-y);
+    #else
+        emit rotationChanged(x);
+    #endif
+
+        <span class="comment">// Don't store the reading in the sensor.</span>
+        return false;
+    }</pre>
+<a name="the-qt-quick-ui"></a>
+<h2>The Qt Quick UI</h2>
+<p>The BubbleLevel.qml is the main QML element. It represents the wooden board of the bubble level and it also acts as connection point between QML and Qt side. In the beginning of the element there exists the two signals, two functions and one property. All of these define the interface between Qt and QML.</p>
+<p>The minimizeApplication is signalled when the application is wanted to be minimized on Maemo platform. The saveCorrectionAngle is signalled when a new calibration factor is required to be stored into the devices memory.</p>
+<p>The handleRotation function acts as Qt slot which the AccelerometerFilters signal rotationChanged is connected. Similarly the setCorrectionAngle function acts also as Qt slot to which the Settings objects signal correctionAngle is connected.</p>
+<p>The property alias taskSwitcherVisible is provided to allow the Qt model to show or hide the task switcher button which minimises the application. This is only meaningful in Maemo platforms, where every application normally has a task switcher button.</p>
+<pre class="highlightedCode brush: cpp">        // Signaled when task switcher button is pressed
+        signal minimizeApplication()
+
+        // Signaled when correction angle is saved
+        signal saveCorrectionAngle(variant angle)
+
+        // These functions are used as Qt slots
+        function handleRotation(deg) {
+            horTube.rawangle = deg
+        }
+
+        function setCorrectionAngle(deg) {
+            calibrationDialog.angleconstant = deg
+        }
+
+        // Used to show the task switcher button in Maemo targets
+        property alias taskSwitcherVisible: taskSwitcher.visible</pre>
+<p>The Tube element represents the the glass tube of the bubble level. It is anchored to the center of the wooden board. The width and height are calculated with a specific factors to make the glass tube to scale to a different resolutions.</p>
+<pre class="highlightedCode brush: cpp">        Tube {
+            id: horTube
+
+            property real rawangle: 0
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width * 0.775; height: parent.height * 0.15625
+            deg: rawangle - calibrationDialog.angleconstant
+        }</pre>
+<p>In the implementation of the Tube.qml the property deg represents the current inclination. The x-position of the bubble is binded to JavaScript function calX which is called every time when the property deg, center or bubblCenter is changed. The function places the bubble to the corresponding place on its parent.</p>
+<pre class="highlightedCode brush: cpp">    Item {
+        id: tube
+
+        property real deg
+
+        Image {
+            id: bubble
+
+            property real center: tube.width / 2
+            property real bubbleCenter: bubble.width / 2
+
+            function calX() {
+                var newX = center + tube.deg / -20 * center
+
+                if((newX - bubbleCenter) &lt; 0) {
+                    return 0
+                }
+                else if((newX + bubbleCenter) &gt; tube.width) {
+                    return tube.width - 2 * bubbleCenter
+                }
+
+                return newX - bubbleCenter;
+            }
+
+            x: calX()
+            width: 0.16129032 * parent.width; height: 0.66666667 * parent.height
+            source: &quot;images/bubble.png&quot;
+            smooth: true
+        }
+
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: 0.36451613 * parent.width; height: 0.66666667 * parent.height
+            source: &quot;images/scale.png&quot;
+        }
+
+        Image {
+            width: parent.width; height:  0.32 * parent.height
+            opacity: 0.8
+            source: &quot;images/reflection.png&quot;
+        }
+    }</pre>
+</div>
+<!-- @@@ -->
+</body>
+</html>
